@@ -1,6 +1,7 @@
 """Portfolio analytics"""
 
 import abc
+import collections
 import logging
 
 import numpy as np
@@ -44,23 +45,39 @@ class PortfolioAnalyticsTRI(PortfolioAnalyticsBase):
 
     """
 
-    def __init__(self, port, bench=None):
+    def __init__(self, port, bench=None, risk_free=None):
         self._port = port
         self._bench = bench
 
+        # active return against benchmark
         if bench is None:
             self._active = None
         else:
             active_ret = port.ret - bench.ret
-            # active_ret.name = '{}-{}'.format(port.ret.name, bench.ret.name)
+            active_ret.name = pc.ACTIVE
             self._active = pdata.PortfolioTRI(ret=active_ret, initial_value=port.initial_value, initial_date=port.initial_date)
 
-        self._stats = None
-        self.rolling_stats = None
-        self.rolling_metrics = None
+        # excess return against risk-free rate
+        if risk_free is None:
+            risk_free_rate = pd.Series(1, index=self.port.tri.index, name='risk_free')
+        else:
+            risk_free_rate = risk_free
+        self._risk_free = pdata.PortfolioTRI(tri=risk_free_rate)
 
+        excess_ret = port.ret - self.risk_free.ret
+        excess_ret.name = pc.ACTIVE
+        self._excess = pdata.PortfolioTRI(ret=excess_ret, initial_value=port.initial_value, initial_date=port.initial_date)
+
+        # base stats output
+        self._stats = None
+
+        # rolling stats
+        self.rolling_years = [1, 3, 5]
+        self._rolling_stats = {y: None for y in self.rolling_years}
+
+        # period returns
         self.periodic_freqs = ['M', 'Q', 'A', 'W']
-        self.periodic_returns = {x: None for x in self.periodic_freqs}
+        self._periodic_returns = {x: None for x in self.periodic_freqs}
 
         self.run()
 
@@ -77,14 +94,20 @@ class PortfolioAnalyticsTRI(PortfolioAnalyticsBase):
         return self._active
 
     @property
+    def risk_free(self):
+        return self._risk_free
+
+    @property
+    def excess(self):
+        return self._excess
+
+    @property
     def stats(self):
         if self._stats is None:
             self.run()
         return self._stats
 
     def run(self):
-        """Run portfolio analytics"""
-
         self.run_basic_stats()
 
         self.run_rolling_stats()
@@ -103,58 +126,82 @@ class PortfolioAnalyticsTRI(PortfolioAnalyticsBase):
         out_stats[pc.IR] = np.divide(self.active.cagr, self.active.volatility)
         self._stats = out_stats
 
+    def compute_rolling_stats(self, yr):
+        periods_per_year = self.port.periods_per_year
+        window1 = 1 + yr * periods_per_year
+
+        if not isinstance(yr, int):
+            window1 = int(np.ceil(window1))
+            raise Warning('Input rolling year {.2f} NOT integer, rolling window ceil to {} periods'.format(yr, window1))
+
+        window = window1 - 1  # for return data
+
+        # rolling objects
+        rp_tri = self.port.tri.rolling(window1)
+        rb_tri = self.bench.tri.rolling(window1)
+        ra_tri = self.active.tri.rolling(window1)
+        re_tri = self.excess.tri.rolling(window1)
+
+        rp_ret = self.port.ret.rolling(window)  # one less
+        rb_ret = self.bench.ret.rolling(window)
+        ra_ret = self.active.ret.rolling(window)
+        re_ret = self.excess.tri.rolling(window)
+
+        r2_ret = pd.concat([self.port.ret, self.bench.ret], axis=1).rolling(window)
+
+        # rolling metrics
+        stats = collections.OrderedDict()
+
+        # returns
+        stats[pc.RETURN_PORT] = rp_tri.apply(pu.get_simple_return, raw=False)
+        stats[pc.RETURN_BENCH] = rb_tri.apply(pu.get_simple_return, raw=False)
+        stats[pc.RETURN_ACTIVE] = ra_tri.apply(pu.get_simple_return, raw=False)  # cumulative alpha
+        stats[pc.RETURN_EXCESS] = re_tri.apply(pu.get_simple_return, raw=False)
+
+        # volatility
+        const4std = np.sqrt(periods_per_year)
+        stats[pc.VOL_PORT] = const4std * rp_ret.std()  # volatility
+        stats[pc.VOL_BENCH] = const4std * rb_ret.std()
+        stats[pc.TE] = const4std * ra_ret.std()
+
+        stats[pc.VOL_RATIO] = stats[pc.RETURN_PORT] / stats[pc.RETURN_BENCH]
+
+        # beta
+        rcov3d = r2_ret.cov().unstack()
+        rcov = rcov3d[(self.port.tri.name, self.bench.tri.name)]
+        rvar = rcov3d[(self.bench.tri.name, self.bench.tri.name)]
+        stats[pc.BETA] = rcov.divide(rvar)
+
+        # risk-adjusted return
+        stats[pc.SHARPE] = stats[pc.RETURN_EXCESS].divide(const4std*re_ret.std())  # std of excess return
+        stats[pc.IR] = (stats[pc.RETURN_PORT] - stats[pc.RETURN_BENCH]).divide(stats[pc.TE])
+        stats[pc.M2] = stats[pc.SHARPE] * stats[pc.VOL_BENCH] + re_ret.mean()
+
+        # remove NaN's
+        stats = collections.OrderedDict([(k, v.dropna(axis=0, how='all')) for k, v in stats.items()])
+
+        return stats
+
     def run_rolling_stats(self):
-        r_stats = dict()
+        self._rolling_stats = {y: self.compute_rolling_stats(y) for y in self._rolling_stats}
 
-        periods_per_year = int(np.ceil(self.port.periods_per_year))
+    @property
+    def rolling1yr(self):
+        if self._rolling_stats.get(1, None) is None:
+            self.run_rolling_stats()
+        self._rolling_stats.get(1, {})
 
-        data = self.port.tri
+    @property
+    def rolling3yr(self):
+        if self._rolling_stats.get(3, None) is None:
+            self.run_rolling_stats()
+        self._rolling_stats.get(3, {})
 
-        r_stats[pc.ROLLING_RETURN_1YR] = pu.rolling_cagr(data, periods_per_year)
-        r_stats[pc.ROLLING_RETURN_3YR] = pu.rolling_cagr(data, 3*periods_per_year)
-        r_stats[pc.ROLLING_RETURN_5YR] = pu.rolling_cagr(data, 5*periods_per_year)
-
-        r_stats[pc.ROLLING_VOLATILITY_1YR] = pu.rolling_realised_vol(data, periods_per_year)
-        r_stats[pc.ROLLING_VOLATILITY_3YR] = pu.rolling_realised_vol(data, 3*periods_per_year)
-        r_stats[pc.ROLLING_VOLATILITY_5YR] = pu.rolling_realised_vol(data, 5*periods_per_year)
-
-        r_stats[pc.ROLLING_SHARPE_1YR] = pu.rolling_sharpe(data, periods_per_year)
-        r_stats[pc.ROLLING_SHARPE_3YR] = pu.rolling_sharpe(data, 3*periods_per_year)
-        r_stats[pc.ROLLING_SHARPE_5YR] = pu.rolling_sharpe(data, 5*periods_per_year)
-
-        if self.bench is not None:
-            data = self.active.tri
-
-            r_stats[pc.ROLLING_ACTIVE_RETURN_1YR] = pu.rolling_cagr(data, periods_per_year)
-            r_stats[pc.ROLLING_ACTIVE_RETURN_3YR] = pu.rolling_cagr(data, 3*periods_per_year)
-            r_stats[pc.ROLLING_ACTIVE_RETURN_5YR] = pu.rolling_cagr(data, 5*periods_per_year)
-
-            r_stats[pc.ROLLING_ACTIVE_VOLATILITY_1YR] = pu.rolling_realised_vol(data, periods_per_year)
-            r_stats[pc.ROLLING_ACTIVE_VOLATILITY_3YR] = pu.rolling_realised_vol(data, 3*periods_per_year)
-            r_stats[pc.ROLLING_ACTIVE_VOLATILITY_5YR] = pu.rolling_realised_vol(data, 5*periods_per_year)
-
-            r_stats[pc.ROLLING_ACTIVE_SHARPE_1YR] = pu.rolling_sharpe(data, periods_per_year)
-            r_stats[pc.ROLLING_ACTIVE_SHARPE_3YR] = pu.rolling_sharpe(data, 3*periods_per_year)
-            r_stats[pc.ROLLING_ACTIVE_SHARPE_5YR] = pu.rolling_sharpe(data, 5*periods_per_year)
-
-            data = self.bench.tri
-
-            r_stats[pc.ROLLING_BENCH_RETURN_1YR] = pu.rolling_cagr(data, periods_per_year)
-            r_stats[pc.ROLLING_BENCH_RETURN_3YR] = pu.rolling_cagr(data, 3*periods_per_year)
-            r_stats[pc.ROLLING_BENCH_RETURN_5YR] = pu.rolling_cagr(data, 5*periods_per_year)
-
-            r_stats[pc.ROLLING_BENCH_VOLATILITY_1YR] = pu.rolling_realised_vol(data, periods_per_year)
-            r_stats[pc.ROLLING_BENCH_VOLATILITY_3YR] = pu.rolling_realised_vol(data, 3*periods_per_year)
-            r_stats[pc.ROLLING_BENCH_VOLATILITY_5YR] = pu.rolling_realised_vol(data, 5*periods_per_year)
-
-            r_stats[pc.ROLLING_BENCH_SHARPE_1YR] = pu.rolling_sharpe(data, periods_per_year)
-            r_stats[pc.ROLLING_BENCH_SHARPE_3YR] = pu.rolling_sharpe(data, 3*periods_per_year)
-            r_stats[pc.ROLLING_BENCH_SHARPE_5YR] = pu.rolling_sharpe(data, 5*periods_per_year)
-
-        # r_stats = {k: v.dropna() for k, v in r_stats.items()}
-
-        self.rolling_stats = r_stats
-        self.rolling_metrics = pd.DataFrame(r_stats)
+    @property
+    def rolling5yr(self):
+        if not self._rolling_stats.get(5, None) is None:
+            self.run_rolling_stats()
+        self._rolling_stats.get(5, {})
 
     def run_period_returns(self):
         dict_returns = {x: None for x in self.periodic_freqs}
@@ -165,29 +212,41 @@ class PortfolioAnalyticsTRI(PortfolioAnalyticsBase):
             ret = pd.DataFrame([port_rets, bench_rets]).transpose()
             ret[pc.ACTIVE] = ret[self.port.tri.name] - ret[self.bench.tri.name]
             dict_returns[freq] = ret  # pandas.DataFrame
-        self.periodic_returns = dict_returns
+        self._periodic_returns = dict_returns
 
     @property
     def annual_returns(self):
-        ret = self.periodic_returns['A'].copy()
+        freq = 'A'
+        if self._periodic_returns.get(freq, None) is None:
+            self.run_period_returns()
+        ret = self._periodic_returns[freq].copy()
         ret.index = ret.index.strftime(pc.FORMAT_ANNUALLY)
         return ret
 
     @property
     def quarterly_returns(self):
-        ret = self.periodic_returns['Q'].copy()
+        freq = 'Q'
+        if self._periodic_returns.get(freq, None) is None:
+            self.run_period_returns()
+        ret = self._periodic_returns[freq].copy()
         ret.index = ret.index.strftime(pc.FORMAT_MONTHLY)
         return ret
 
     @property
     def monthly_returns(self):
-        ret = self.periodic_returns['M'].copy()
+        freq = 'M'
+        if self._periodic_returns.get(freq, None) is None:
+            self.run_period_returns()
+        ret = self._periodic_returns[freq].copy()
         ret.index = ret.index.strftime(pc.FORMAT_MONTHLY)
         return ret
 
     @property
     def weekly_returns(self):
-        ret = self.periodic_returns['W'].copy()
+        freq = 'W'
+        if self._periodic_returns.get(freq, None) is None:
+            self.run_period_returns()
+        ret = self._periodic_returns[freq].copy()
         ret.index = ret.index.strftime(pc.FORMAT_WEEKLY)
         return ret
 

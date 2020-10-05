@@ -152,76 +152,9 @@ def get_period_returns(data, freq):
     return periodic_ret
 
 
-def rolling_returns(data, period=pc.DAYS_PER_YEAR, option='simple'):
-    if option == 'log':
-        # avoid taking the log of non-positive numbers
-        ratio = data / data.shift(period)
-        return_data = np.log(ratio.where(ratio > 0))
-    elif option == 'simple':
-        shifted = data.shift(period)
-        return_data = (data - shifted) / shifted.abs()
+def get_simple_return(data):
+    """Return of input pandas Series or DataFrames"""
+    if data.iloc[0] == 0:
+        return np.inf
     else:
-        raise ValueError('{} is not a valid option!'.format(option))
-    return return_data
-
-
-def rolling_cagr(data, period=pc.DAYS_PER_YEAR, option='simple'):
-    """Rolling Compound Annual Growth Rate
-
-    Args:
-        data (pandas.Series or pandas.DataFrame): Input Series and DataFrame.
-        period (Optional[int]): int representing the lookback period.
-        option (Optional[str]): Simple or log return. Available options: {'log', 'simple'}. 'log' by default.
-
-    Returns:
-        float or pandas.Series
-    """
-    return_data = rolling_returns(data, period, option)
-
-    years = np.float64(period) / np.float64(pc.DAYS_PER_YEAR)
-    if option == 'log':
-        return_data = return_data / years
-    else:
-        return_data = (1 + return_data) ** (np.float64(1) / np.float64(years)) - 1
-
-    return return_data
-
-
-def rolling_realised_vol(data, period=pc.DAYS_PER_YEAR):
-    """
-    Args:
-        data (pandas.Series or pandas.DataFrame): Input Series and DataFrame.
-        period (Optional[int]): int representing the lookback period. Defaulted to be DAYS_PER_YEAR.
-
-    Returns:
-        float or pandas.Series
-
-    Raises:
-        TypeError: If data is not pandas.Series nor pandas.DataFrame
-    """
-    daily_returns = data.pct_change()
-    temp = daily_returns.rolling(window=period, center=False).std()
-    return temp * np.sqrt(pc.DAYS_PER_YEAR)
-
-
-def rolling_sharpe(data, period=pc.DAYS_PER_YEAR):
-    """Rolling Sharpe ratio
-
-    Args:
-        data (pandas.Series or pandas.DataFrame): Input Series and DataFrame.
-        period (Optional[int]): int representing the lookback period.
-
-    Returns:
-        float or pandas.Series
-
-    Raises:
-        TypeError: If data is not pandas.Series nor pandas.DataFrame
-    """
-    rol_ret = rolling_returns(data, period)
-    rol_vol = rolling_realised_vol(data, period)
-    rol_sharpe = rol_ret / rol_vol
-    return rol_sharpe
-
-
-
-
+        return data.iloc[-1] / data.iloc[0] - 1

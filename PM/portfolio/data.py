@@ -7,7 +7,8 @@ import dateutil
 import pandas as pd
 import numpy as np
 
-from .utilities import *
+from . import constants as pc
+from . import utilities as pu
 
 
 logger = logging.getLogger(__name__)
@@ -21,12 +22,7 @@ __all__ = [
 ]
 
 
-DEFAULT_INITIAL_VALUE = 1
 
-STAT_RETURN = 'return'
-STAT_CAGR = 'cagr'
-STAT_VOLATILITY = 'volatility'
-STAT_SHARPE = 'sharpe'
 
 
 class PortfolioTRIBase(metaclass=abc.ABCMeta):
@@ -55,6 +51,11 @@ class PortfolioDataBase(PortfolioTRIBase, metaclass=abc.ABCMeta):
         """pandas.DataFrame: portfolio holdings weight
         """
 
+    @property
+    def assets(self):
+        """pandas.DataFrame: portfolio asset price or total return index
+        """
+
 
 class PortfolioTRI(PortfolioTRIBase):
     """Portfolio data with total return index only
@@ -64,7 +65,7 @@ class PortfolioTRI(PortfolioTRIBase):
         ret (pandas.DataFrame or pandas.Series): total returns
     """
 
-    def __init__(self, tri=None, ret=None, start_date=None, end_date=None, **kwargs):
+    def __init__(self, tri=None, ret=None, name=None, start_date=None, end_date=None, **kwargs):
         self._tri = None
         self._ret = None
 
@@ -75,6 +76,7 @@ class PortfolioTRI(PortfolioTRIBase):
         self._years = None
         self._periods_per_year = None
 
+        # required input, one of tri and ret must be valid
         if tri is not None:
             self._process_input_tri(tri)
             if ret is not None:
@@ -85,15 +87,26 @@ class PortfolioTRI(PortfolioTRIBase):
         else:
             raise ValueError('One of input tri and ret must be provided.')
 
+        # Portfolio name, pandas.Series only
+        if isinstance(self.tri, pd.Series):
+            if name is None:
+                name = self.tri.name
+            else:
+                self._tri.name = name
+                self._ret.name = name
+        else:
+            if name is not None:
+                raise Warning('Input data not pandas.Series, ignore input name')
+
         self._run_basic_stats()
 
     @property
     def tri(self):
-        return self._tri.copy()  # or self._tri.copy()
+        return self._tri.copy()
 
     @property
     def ret(self):
-        return self._ret.copy()  # or self._ret.copy()
+        return self._ret.copy()
 
     def _process_input_tri(self, tri):
         # assuming initial value is not NaN
@@ -103,9 +116,9 @@ class PortfolioTRI(PortfolioTRIBase):
         self.initial_date = tri.first_valid_index()
         self.initial_value = tri.loc[self.initial_date]
 
-    def _process_input_ret(self, ret, initial_date=None, initial_value=DEFAULT_INITIAL_VALUE):
+    def _process_input_ret(self, ret, initial_date=None, initial_value=pc.DEFAULT_TRI_INITIAL_VALUE):
         self._ret = ret
-        self._tri = return2tri(ret, initial_date=initial_date, initial_value=initial_value)
+        self._tri = pu.return2tri(ret, initial_date=initial_date, initial_value=initial_value)
 
         self.initial_value = self._tri.iloc[0]
         self.initial_date = self._tri.index[0]
@@ -120,15 +133,15 @@ class PortfolioTRI(PortfolioTRIBase):
         first_index = self.tri.first_valid_index()
         last_index = self.tri.last_valid_index()
 
-        num_years = get_year_frac(first_index, last_index)
+        num_years = pu.get_year_frac(first_index, last_index)
         periods_per_year = len(self.tri) / num_years
 
         tri_ratio = np.divide(self.tri.loc[last_index], self.tri.loc[first_index])
 
-        out_dict[STAT_RETURN] = tri_ratio - 1  # simple return
-        out_dict[STAT_CAGR] = np.power(tri_ratio, 1/num_years) - 1  # annualized return
-        out_dict[STAT_VOLATILITY] = np.sqrt(periods_per_year) * self.ret.std()
-        out_dict[STAT_SHARPE] = out_dict[STAT_CAGR] / out_dict[STAT_VOLATILITY]
+        out_dict[pc.RETURN] = tri_ratio - 1  # simple return
+        out_dict[pc.CAGR] = np.power(tri_ratio, 1/num_years) - 1  # annualized return
+        out_dict[pc.VOLATILITY] = np.sqrt(periods_per_year) * self.ret.std()
+        out_dict[pc.SHARPE] = out_dict[pc.CAGR] / out_dict[pc.VOLATILITY]
 
         self._stats = out_dict
         self._years = num_years
@@ -143,9 +156,10 @@ class PortfolioTRI(PortfolioTRIBase):
 
     @property
     def periods_per_year(self):
+        """Number of periods (daily, weekly or monthly depending on underlying data) per year in integer. """
         if self._periods_per_year is None:
             self._run_basic_stats()
-        return self._periods_per_year
+        return int(np.ceil(self._periods_per_year))
 
     @property
     def stats(self):
@@ -156,17 +170,17 @@ class PortfolioTRI(PortfolioTRIBase):
     @property
     def cagr(self):
         """Compound Annual Growth Rate (CAGR), geometrically annualized return"""
-        return self.stats[STAT_CAGR]
+        return self.stats[pc.CAGR]
 
     @property
     def volatility(self):
         """Annualized Volatility"""
-        return self.stats[STAT_VOLATILITY]
+        return self.stats[pc.VOLATILITY]
 
     @property
     def sharpe(self):
         """Sharpe Ratio"""
-        return self.stats[STAT_SHARPE]
+        return self.stats[pc.SHARPE]
 
     def __add__(self, port2):
         if not isinstance(port2, PortfolioTRI):
@@ -189,7 +203,7 @@ class PortfolioTRI(PortfolioTRIBase):
             TypeError('Multiplication with scaler only')
 
         ret = scaler * self.ret
-        out = PortfolioTRI(ret=ret, initial_value=self, initial_date=self.initial_date)
+        out = PortfolioTRI(ret=ret, initial_value=self.initial_value, initial_date=self.initial_date)
         return out
 
 

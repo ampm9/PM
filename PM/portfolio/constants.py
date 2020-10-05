@@ -2,9 +2,17 @@
 
 # Date formats
 FORMAT_DAILY = '%Y/%m/%d'
-FORMAT_WEEKLY = '%Y.W%W'
 FORMAT_MONTHLY = '%Y/%m'
 FORMAT_ANNUALLY = '%Y'
+
+FORT_DATE_FREQ = {
+    'A': FORMAT_ANNUALLY,
+    'Q': FORMAT_MONTHLY,
+    'M': FORMAT_MONTHLY,
+    'W': FORMAT_DAILY,
+    'D': FORMAT_DAILY
+}
+
 
 # Date relevant
 DAYS_PER_YEAR = 252
@@ -17,58 +25,40 @@ DAYS_PER_QUARTER = 63
 MONTHS_PER_YEAR = 12
 QUARTERS_PER_YEAR = 4
 
+
 # Portfolio relevant
 PORT = 'portfolio'
 BENCH = 'benchmark'
 ACTIVE = 'active'
+EXCESS = 'excess'
+RISK_FREE = 'risk_free'
+
+DEFAULT_TRI_INITIAL_VALUE = 1
 
 
-# Analytic Metrics
+# Analytic Stats
 RETURN = 'return'
 VOLATILITY = 'volatility'
 SHARPE = 'sharpe'
+CAGR = 'cagr'
 
 RETURN_ACTIVE = 'return_active'
+RETURN_EXCESS = 'return_excess'
+
+# Benchmark relevant metrics
+BETA = 'beta'
 TE = 'te'
 IR = 'ir'
+M2 = 'm2'
 
-ROLLING_RETURN_1YR = 'rolling_return_1yr'
-ROLLING_RETURN_3YR = 'rolling_return_3yr'
-ROLLING_RETURN_5YR = 'rolling_return_5yr'
+# Rolling Metrics, some are same as regular metrics
+ROLLING_PREFIX = 'rolling'
 
-ROLLING_VOLATILITY_1YR = 'rolling_volatility_1yr'
-ROLLING_VOLATILITY_3YR = 'rolling_volatility_3yr'
-ROLLING_VOLATILITY_5YR = 'rolling_volatility_5yr'
+RETURN_PORT = 'return_port'
+RETURN_BENCH = 'return_bench'
 
-ROLLING_SHARPE_1YR = 'rolling_sharpe_1yr'
-ROLLING_SHARPE_3YR = 'rolling_sharpe_3yr'
-ROLLING_SHARPE_5YR = 'rolling_sharpe_5yr'
-
-ROLLING_ACTIVE_RETURN_1YR = 'rolling_active_return_1yr'
-ROLLING_ACTIVE_RETURN_3YR = 'rolling_active_return_3yr'
-ROLLING_ACTIVE_RETURN_5YR = 'rolling_active_return_5yr'
-
-ROLLING_ACTIVE_VOLATILITY_1YR = 'rolling_active_volatility_1yr'
-ROLLING_ACTIVE_VOLATILITY_3YR = 'rolling_active_volatility_3yr'
-ROLLING_ACTIVE_VOLATILITY_5YR = 'rolling_active_volatility_5yr'
-
-ROLLING_ACTIVE_SHARPE_1YR = 'rolling_active_sharpe_1yr'
-ROLLING_ACTIVE_SHARPE_3YR = 'rolling_active_sharpe_3yr'
-ROLLING_ACTIVE_SHARPE_5YR = 'rolling_active_sharpe_5yr'
-
-ROLLING_BENCH_RETURN_1YR = 'rolling_bench_return_1yr'
-ROLLING_BENCH_RETURN_3YR = 'rolling_bench_return_3yr'
-ROLLING_BENCH_RETURN_5YR = 'rolling_bench_return_5yr'
-
-ROLLING_BENCH_VOLATILITY_1YR = 'rolling_bench_volatility_1yr'
-ROLLING_BENCH_VOLATILITY_3YR = 'rolling_bench_volatility_3yr'
-ROLLING_BENCH_VOLATILITY_5YR = 'rolling_bench_volatility_5yr'
-
-ROLLING_BENCH_SHARPE_1YR = 'rolling_bench_sharpe_1yr'
-ROLLING_BENCH_SHARPE_3YR = 'rolling_bench_sharpe_3yr'
-ROLLING_BENCH_SHARPE_5YR = 'rolling_bench_sharpe_5yr'
-
-
-
+VOL_PORT = 'vol_port'
+VOL_BENCH = 'vol_bench'
+VOL_RATIO = 'vol_ratio'
 
 
