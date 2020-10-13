@@ -31,6 +31,7 @@ PORT = 'portfolio'
 BENCH = 'benchmark'
 ACTIVE = 'active'
 EXCESS = 'excess'
+BENCH_EXCESS = 'bench_excess'
 RISK_FREE = 'risk_free'
 
 DEFAULT_TRI_INITIAL_VALUE = 1
@@ -60,5 +61,8 @@ RETURN_BENCH = 'return_bench'
 VOL_PORT = 'vol_port'
 VOL_BENCH = 'vol_bench'
 VOL_RATIO = 'vol_ratio'
+
+SHARPE_PORT = 'sharpe_port'
+SHARPE_BENCH = 'sharpe_bench'
 
 

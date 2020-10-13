@@ -58,6 +58,7 @@ class PortfolioAnalyticsTRI(PortfolioAnalyticsBase):
             self._active = pdata.PortfolioTRI(ret=active_ret, initial_value=port.initial_value, initial_date=port.initial_date)
 
         # excess return against risk-free rate
+        # TODO: risk-free rate should be embeded into portfolio data
         if risk_free is None:
             risk_free_rate = pd.Series(1, index=self.port.tri.index, name='risk_free')
         else:
@@ -65,8 +66,12 @@ class PortfolioAnalyticsTRI(PortfolioAnalyticsBase):
         self._risk_free = pdata.PortfolioTRI(tri=risk_free_rate)
 
         excess_ret = port.ret - self.risk_free.ret
-        excess_ret.name = pc.ACTIVE
+        excess_ret.name = pc.EXCESS
         self._excess = pdata.PortfolioTRI(ret=excess_ret, initial_value=port.initial_value, initial_date=port.initial_date)
+
+        bench_excess_ret = bench.ret - self.risk_free.ret
+        bench_excess_ret.name = pc.BENCH_EXCESS
+        self._bench_excess = pdata.PortfolioTRI(ret=bench_excess_ret, initial_value=bench.initial_value, initial_date=bench.initial_date)
 
         # base stats output
         self._stats = None
@@ -100,6 +105,10 @@ class PortfolioAnalyticsTRI(PortfolioAnalyticsBase):
     @property
     def excess(self):
         return self._excess
+
+    @property
+    def bench_excess(self):
+        return self._bench_excess
 
     @property
     def stats(self):
@@ -141,11 +150,14 @@ class PortfolioAnalyticsTRI(PortfolioAnalyticsBase):
         rb_tri = self.bench.tri.rolling(window1)
         ra_tri = self.active.tri.rolling(window1)
         re_tri = self.excess.tri.rolling(window1)
+        rbe_tri = self.bench_excess.tri.rolling(window1)
 
         rp_ret = self.port.ret.rolling(window)  # one less
         rb_ret = self.bench.ret.rolling(window)
         ra_ret = self.active.ret.rolling(window)
-        re_ret = self.excess.tri.rolling(window)
+        re_ret = self.excess.ret.rolling(window)
+        rbe_ret = self.bench_excess.ret.rolling(window)
+        rf_rate = self.risk_free.ret.rolling(window)
 
         r2_ret = pd.concat([self.port.ret, self.bench.ret], axis=1).rolling(window)
 
@@ -164,7 +176,7 @@ class PortfolioAnalyticsTRI(PortfolioAnalyticsBase):
         stats[pc.VOL_BENCH] = const4std * rb_ret.std()
         stats[pc.TE] = const4std * ra_ret.std()
 
-        stats[pc.VOL_RATIO] = stats[pc.RETURN_PORT] / stats[pc.RETURN_BENCH]
+        stats[pc.VOL_RATIO] = stats[pc.VOL_PORT] / stats[pc.VOL_BENCH]
 
         # beta
         rcov3d = r2_ret.cov().unstack()
@@ -173,9 +185,11 @@ class PortfolioAnalyticsTRI(PortfolioAnalyticsBase):
         stats[pc.BETA] = rcov.divide(rvar)
 
         # risk-adjusted return
-        stats[pc.SHARPE] = stats[pc.RETURN_EXCESS].divide(const4std*re_ret.std())  # std of excess return
+        # TODO: return here should be CAGR instead
+        stats[pc.SHARPE_PORT] = stats[pc.RETURN_EXCESS].divide(const4std * re_ret.std())  # std of excess return
+        stats[pc.SHARPE_BENCH] = stats[pc.BENCH_RETURN_EXCESS].divide(const4std * rbe_ret.std())  # std of excess return
         stats[pc.IR] = (stats[pc.RETURN_PORT] - stats[pc.RETURN_BENCH]).divide(stats[pc.TE])
-        stats[pc.M2] = stats[pc.SHARPE] * stats[pc.VOL_BENCH] + re_ret.mean()
+        stats[pc.M2] = stats[pc.SHARPE] * stats[pc.VOL_BENCH] + rf_rate.mean()
 
         # remove NaN's
         stats = collections.OrderedDict([(k, v.dropna(axis=0, how='all')) for k, v in stats.items()])
