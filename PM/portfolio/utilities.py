@@ -67,12 +67,15 @@ def get_year_frac(start_date, end_date):
 
 
 # @requires([pd.DataFrame, pd.Series])
-def return2tri(data, initial_date=None, initial_value=100.):
-    """Convert a return time-series to total return index
+def return2tri(data, initial_value=100., initial_date=None):
+    """Convert a return time-seres to total return index.
+
+    If initial date is not specified, initial date is data's first date index, first value does not matter;
+    If initial date is specified and it is earlier than data index, prepending initial date.
 
     Args:
         data(pandas.Series or pandas.DataFrame): Input Series or DataFrame
-        initial_date: the initial index value to preappend (usually type of datetime)
+        initial_date(date): the initial index value to prepend (usually type of datetime)
         initial_value(float): initial value of total return index, defaults to 100.
 
     Returns:
@@ -81,43 +84,112 @@ def return2tri(data, initial_date=None, initial_value=100.):
     Raises:
         TypeError: If data is not pandas.Series nor pandas.DataFrame
     """
-
-    # Check, length of input must be great than 2, empty in, empty out
-
     initial_date = pd.to_datetime(initial_date)
 
     if isinstance(data, pd.Series):
+        if data.isempty():  # edge case, empty in, empty out
+            return data
 
-        if initial_date is not None:
-            if initial_date > data.index.min():
-                raise ValueError('Initial_date should be before all index dates')
-            elif initial_date == data.index.min():
-                raise ValueError('Input initial_date should not be equal to date index')
-
-            prepended_row = pd.Series({initial_date: 0}, name=data.name)
-            ret = pd.concat([prepended_row, data])
-        elif pd.isnull(data.iloc[0]) and data.iloc[1:].notnull().all():
+        if initial_date is None:
             ret = data
-            ret.iloc[0] = 0
-        elif data.notnull().all():
-            initial_date = prev_bdate(data.index[0])  # previous business date
-            prepended_row = pd.Series({initial_date: 0}, name=data.name)
+            ret.iloc[0] = 0.
+        elif initial_date == data.index[0]:
+            ret = data
+            ret.iloc[0] = 0.
+        elif initial_date < data.index.min():
+            prepended_row = pd.Series({initial_date: 0.}, name=data.name)
             ret = pd.concat([prepended_row, data])
-        # elif: # some NaN values exists, raise warning, but carry on calculation on non-NaN values
+        elif initial_date in pd.to_datetime(data.index):
+            ret = data[data.index >= initial_date]
+            ret.iloc[0] = 0.
+            raise Warning('Input initial date {} is not data.index[0] = {}, truncate input data series'.format(
+                initial_date.strftime(pc.FORMAT_DATE),
+                data.index[0].strftime(pc.FORMAT_DATE)
+            ))
         else:
-            raise ValueError('With no input initial_date, first data value must be NaN, the rest must be non-NaN')
+            raise ValueError('Initial_date {} should be either in data.index or before all date index'.format(
+                initial_date.strftime(pc.FORMAT_DATE)
+            ))
 
+        # process NaN-value, raise Warnings
+        nan_idx = ret.isnull()
+        if nan_idx.sum() > 0:
+            raise Warning('{}/{} NaN-values in input return data default to 0'.format(nan_idx.sum(), len(nan_idx)))
+        ret[nan_idx] = 0.
+
+        # returns to TRI
         ratio = 1 + ret
-        ret = initial_value * ratio.cumprod()  # remove NaN values
+        ret = initial_value * ratio.cumprod()
         return ret
 
-    else:  # DataFrame
+    elif isinstance(data, pd.DataFrame):
         ret_dict = {x: None for x in data.columns}
         for c in data.columns:
             ret_dict[c] = return2tri(data[c], initial_date=initial_date, initial_value=initial_value)
         ret = pd.DataFrame(ret_dict)
         ret = ret[data.columns]  # reorder columns
         return ret
+
+    elif data is None:
+        return None
+
+    else:
+        raise TypeError('Input data must be either pandas.Series or pandas.DataFrame')
+
+
+def process_tri_or_return(tri=None, ret=None, initial_value=100., initial_date=None):
+    """Compute total return index or return if either one of them are input;
+    If neither TRI and return are not None, check if they represent the same index.
+
+    Args:
+        tri(pandas.Series or pandas.DataFrame): Input total return index Time-Series or DataFrame
+        ret(pandas.Series or pandas.DataFrame): Input return Time-Series or DataFrame
+        initial_date(date): the initial index value to prepend (usually type of datetime)
+        initial_value(float): initial value of total return index, defaults to 100.
+
+    Returns:
+        (pandas.Series or pandas.DataFrame, pandas.Series or pandas.DataFrame, boolean)
+    """
+    if tri is None and ret is None:
+        return None, None, True
+
+    if tri is not None and ret is None:
+        if initial_date is not None:
+            raise Warning('Initial_date and initial_value are not required if return data is not input')
+        ret = tri.pct_change()
+        return tri, ret, True
+
+    if tri is None and ret is not None:
+        tri = return2tri(ret, initial_date=initial_value, initial_date=initial_date)
+        return tri, ret, True
+
+    if tri is not None and ret is not None:
+        if all(isinstance(x, pd.Series) for x in [tri, ret]):
+            if tri.empty or ret.empty:
+                return tri, ret, tri.empty and ret.empty
+
+            ret2 = tri.pct_change()
+            if len(ret.index) != len(ret2.index):
+                raise Warning('Input TRI and return data index length mismatch ')
+                return tri, ret, False
+            is_equal = np.isclose(ret.iloc[1:].to_numpy(), ret2.iloc[1:].to_numpy())
+            return tri, ret, all(is_equal)
+
+        elif all(isinstance(x, pd.DataFrame) for x in [tri, ret]):
+            if len(tri.columns.symmetric_difference(ret.columns)) > 1:
+                raise Warning('Input TRI and return DataFrame columns mismatch')
+                return tri, ret, False
+
+            is_equal_dict = {x: False for x in tri.columns}
+            for c in tri.columns:
+                _, _, is_equal = process_tri_or_return(tri=tri[c], ret=ret[c])
+                is_equal_dict[c] = is_equal
+            is_equal = all(is_equal_dict.values())
+            return tri, ret, False
+
+        else:
+            raise Warning('Input TRI and return type mismatch ')
+            return tri, ret, False
 
 
 def get_period_returns(data, freq):

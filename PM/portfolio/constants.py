@@ -1,7 +1,9 @@
 
 
 # Date formats
-FORMAT_DAILY = '%Y/%m/%d'
+FORMAT_DATE = '%Y/%m/%d'
+
+FORMAT_DAILY = FORMAT_DATE
 FORMAT_MONTHLY = '%Y/%m'
 FORMAT_ANNUALLY = '%Y'
 
