@@ -41,12 +41,18 @@ DEFAULT_TRI_INITIAL_VALUE = 1
 
 # Analytic Stats
 RETURN = 'return'
-VOLATILITY = 'volatility'
-SHARPE = 'sharpe'
-CAGR = 'cagr'
-
 RETURN_ACTIVE = 'return_active'
 RETURN_EXCESS = 'return_excess'
+RETURN_EXCESS = 'return_bench_excess'
+
+CAGR = 'cagr'
+CAGR_ACTIVE = 'cagr_active'
+CAGR_EXCESS = 'cagr_excess'
+CAGR_BENCH_EXCESS = 'cagr_bench_excess'
+
+VOLATILITY = 'volatility'
+VOLATILITY_EXCESS = 'volatility_excess'
+SHARPE = 'sharpe'
 
 # Benchmark relevant metrics
 BETA = 'beta'
@@ -57,8 +63,8 @@ M2 = 'm2'
 # Rolling Metrics, some are same as regular metrics
 ROLLING_PREFIX = 'rolling'
 
-RETURN_PORT = 'return_port'
-RETURN_BENCH = 'return_bench'
+CAGR_PORT = 'cagr_port'
+CAGR_BENCH = 'cagr_bench'
 
 VOL_PORT = 'vol_port'
 VOL_BENCH = 'vol_bench'

@@ -160,7 +160,7 @@ def process_tri_or_return(tri=None, ret=None, initial_value=100., initial_date=N
         return tri, ret, True
 
     if tri is None and ret is not None:
-        tri = return2tri(ret, initial_date=initial_value, initial_date=initial_date)
+        tri = return2tri(ret, initial_value=initial_value, initial_date=initial_date)
         return tri, ret, True
 
     if tri is not None and ret is not None:
@@ -226,7 +226,24 @@ def get_period_returns(data, freq):
 
 def get_simple_return(data):
     """Return of input pandas Series or DataFrames"""
+    first_index = data.first_valid_index()
+    last_index = data.last_valid_index()
+
+    if data.loc[first_index] == 0:
+        return np.inf
+    else:
+        return data.loc[last_index] / data.loc[first_index] - 1
+
+
+def get_simple_cagr(data):
+    """Compound Annual Growth Rate of input pandas Series or DataFrames"""
     if data.iloc[0] == 0:
         return np.inf
     else:
-        return data.iloc[-1] / data.iloc[0] - 1
+        first_index = data.first_valid_index()
+        last_index = data.last_valid_index()
+        num_years = get_year_frac(first_index, last_index)
+
+        tri_ratio = np.divide(data.loc[last_index], data.loc[first_index])
+        return np.power(tri_ratio, 1/num_years) - 1  # annualized return
+

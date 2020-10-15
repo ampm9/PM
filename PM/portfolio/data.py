@@ -22,9 +22,6 @@ __all__ = [
 ]
 
 
-
-
-
 class PortfolioTRIBase(metaclass=abc.ABCMeta):
     """Portfolio Total Return Index Data abstract base class
 
@@ -39,6 +36,22 @@ class PortfolioTRIBase(metaclass=abc.ABCMeta):
     @property
     def ret(self):
         """pandas.Series or pandas.DataFrame: time-series total returns"""
+
+    @property
+    def risk_free_tri(self):
+        """pandas.Series: risk-free rate return index, default to constant time-series with portfolio's initial value"""
+
+    @property
+    def risk_free_rate(self):
+        """pandas.Series: risk-free interest rate, default to zero"""
+
+    @property
+    def excess_tri(self):
+        """pandas.Series or pandas.DataFrame: time-series excess return index"""
+
+    @property
+    def excess_ret(self):
+        """pandas.Series or pandas.DataFrame: time-series excess returns"""
 
 
 class PortfolioDataBase(PortfolioTRIBase, metaclass=abc.ABCMeta):
@@ -65,39 +78,51 @@ class PortfolioTRI(PortfolioTRIBase):
         ret (pandas.DataFrame or pandas.Series): total returns
     """
 
-    def __init__(self, tri=None, ret=None, name=None, start_date=None, end_date=None, **kwargs):
-        self._tri = None
-        self._ret = None
+    def __init__(self, tri=None, ret=None, risk_free_tri=None, risk_free_rate=None, name=None, **kwargs):
 
-        self.start_date = pd.to_datetime(start_date)
-        self.end_date = pd.to_datetime(end_date)
-
-        self._stats = None
-        self._years = None
-        self._periods_per_year = None
-
-        # required input, one of tri and ret must be valid
-        if tri is not None:
-            self._process_input_tri(tri)
-            if ret is not None:
-                self._check_tri_and_ret(ret)
-                pass
-        elif ret is not None:  # no input tri
-            self._process_input_ret(ret, **kwargs)
-        else:
+        # portfolio returns and TRI
+        if tri is None and ret is None:
             raise ValueError('One of input tri and ret must be provided.')
+        else:
+            self._tri, self._ret, _ = pu.process_tri_or_return(tri=tri, ret=ret, **kwargs)
+
+        # self._ret = self._ret.dropna(axis=0, how='all') # remove first NaN
+
+        self.initial_date = tri.first_valid_index()
+        self.initial_value = tri.loc[self.initial_date]
 
         # Portfolio name, pandas.Series only
         if isinstance(self.tri, pd.Series):
             if name is None:
-                name = self.tri.name
+                self._name = self.tri.name
             else:
+                self._name = name
                 self._tri.name = name
                 self._ret.name = name
         else:
-            if name is not None:
-                raise Warning('Input data not pandas.Series, ignore input name')
+            self._name = ', '.join(self.tri.columns.tolist())
 
+        # risk free rate and risk free index
+        if risk_free_tri is None and risk_free_rate is None:
+            self._risk_free_tri = pd.Series(1, index=self.tri.index, name='risk_free')
+            self._risk_free_rate = risk_free_tri.pct_change()
+        else:
+            self._risk_free_tri, self._risk_free_rate = pu.process_tri_or_return(tri=risk_free_tri, ret=risk_free_rate, **kwargs)
+
+        # excess return and TRI
+        self._excess_ret = self.ret.subtract(self.risk_free_rate, axis=0)
+        self._excess_tri = pu.return2tri(self.excess_ret, initial_date=self.initial_date, initial_value=self.initial_value)
+
+        if isinstance(self.ret, pd.Series):
+            self._excess_ret.name = self.ret.name
+            self._excess_tri.name = self.tri.name
+
+        # stats metrics
+        self._stats = None
+        self._years = None
+        self._periods_per_year = None
+
+        # run
         self._run_basic_stats()
 
     @property
@@ -108,25 +133,21 @@ class PortfolioTRI(PortfolioTRIBase):
     def ret(self):
         return self._ret.copy()
 
-    def _process_input_tri(self, tri):
-        # assuming initial value is not NaN
-        self._tri = tri
-        self._ret = tri.pct_change().dropna(axis=0, how='all')
+    @property
+    def risk_free_tri(self):
+        return self._risk_free_rate.copy()
 
-        self.initial_date = tri.first_valid_index()
-        self.initial_value = tri.loc[self.initial_date]
+    @property
+    def risk_free_rate(self):
+        return self._risk_free_rate.copy()
 
-    def _process_input_ret(self, ret, initial_date=None, initial_value=pc.DEFAULT_TRI_INITIAL_VALUE):
-        self._ret = ret
-        self._tri = pu.return2tri(ret, initial_date=initial_date, initial_value=initial_value)
+    @property
+    def excess_tri(self):
+        return self._ex_tri.copy()
 
-        self.initial_value = self._tri.iloc[0]
-        self.initial_date = self._tri.index[0]
-
-    def _check_tri_and_ret(self, in_ret):
-        """ TODO: cross-check returns implied by input tri and input time-series returns
-        """
-        pass
+    @property
+    def excess_ret(self):
+        return self._ex_ret.copy()
 
     def _run_basic_stats(self):
         out_dict = {}
@@ -137,11 +158,16 @@ class PortfolioTRI(PortfolioTRIBase):
         periods_per_year = len(self.tri) / num_years
 
         tri_ratio = np.divide(self.tri.loc[last_index], self.tri.loc[first_index])
-
         out_dict[pc.RETURN] = tri_ratio - 1  # simple return
         out_dict[pc.CAGR] = np.power(tri_ratio, 1/num_years) - 1  # annualized return
+
+        ex_tri_ratio = np.divide(self.excess_tri.loc[last_index], self.excess_tri.loc[first_index])
+        out_dict[pc.RETURN_EXCESS] = ex_tri_ratio - 1
+        out_dict[pc.CAGR_EXCESS] = np.power(ex_tri_ratio, 1/num_years) - 1
+
         out_dict[pc.VOLATILITY] = np.sqrt(periods_per_year) * self.ret.std()
-        out_dict[pc.SHARPE] = out_dict[pc.CAGR] / out_dict[pc.VOLATILITY]
+        ex_vol = np.sqrt(periods_per_year) * self.excess_ret.std()
+        out_dict[pc.SHARPE] = out_dict[pc.CAGR_EXCESS] / ex_vol
 
         self._stats = out_dict
         self._years = num_years
@@ -183,10 +209,11 @@ class PortfolioTRI(PortfolioTRIBase):
         return self.stats[pc.SHARPE]
 
     def __add__(self, port2):
+        ## TODO: should align two time-series returns, same to __sub__
         if not isinstance(port2, PortfolioTRI):
             TypeError('Subtraction for PortfolioTRI object only ')
 
-        blend_ret = self.ret + self.port2
+        blend_ret = self.ret + port2.ret
         blend = PortfolioTRI(ret=blend_ret, initial_value=self.initial_value, initial_date=self.initial_date)
         return blend
 
@@ -198,11 +225,11 @@ class PortfolioTRI(PortfolioTRIBase):
         active = PortfolioTRI(ret=active_ret, initial_value=self.initial_value, initial_date=self.initial_date)
         return active
 
-    def __mul__(self, scaler):
-        if not isinstance(scaler, (int, float)):
+    def __mul__(self, scalar):
+        if not isinstance(scalar, (int, float)):
             TypeError('Multiplication with scaler only')
 
-        ret = scaler * self.ret
+        ret = scalar * self.ret
         out = PortfolioTRI(ret=ret, initial_value=self.initial_value, initial_date=self.initial_date)
         return out
 
