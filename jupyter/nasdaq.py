@@ -2,7 +2,7 @@ import os
 
 import pandas as pd
 
-import pm.PM.portfolio.utilities as autils
+import pm.PM.portfolio.utilities as pu
 import pm.PM.portfolio.data as pdata
 
 
@@ -39,3 +39,5 @@ pd.concat([df.head(2), df.tail(2)])
 
 port = pdata.PortfolioTRI(ret=df[name].pct_change().dropna())
 bench = pdata.PortfolioTRI(ret=df[bench_name].pct_change().dropna())
+
+
