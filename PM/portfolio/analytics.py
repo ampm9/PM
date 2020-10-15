@@ -57,22 +57,6 @@ class PortfolioAnalyticsTRI(PortfolioAnalyticsBase):
             active_ret.name = pc.ACTIVE
             self._active = pdata.PortfolioTRI(ret=active_ret, initial_value=port.initial_value, initial_date=port.initial_date)
 
-        # excess return against risk-free rate
-        # TODO: risk-free rate should be embeded into portfolio data
-        if risk_free is None:
-            risk_free_rate = pd.Series(1, index=self.port.tri.index, name='risk_free')
-        else:
-            risk_free_rate = risk_free
-        self._risk_free = pdata.PortfolioTRI(tri=risk_free_rate)
-
-        excess_ret = port.ret - self.risk_free.ret
-        excess_ret.name = pc.EXCESS
-        self._excess = pdata.PortfolioTRI(ret=excess_ret, initial_value=port.initial_value, initial_date=port.initial_date)
-
-        bench_excess_ret = bench.ret - self.risk_free.ret
-        bench_excess_ret.name = pc.BENCH_EXCESS
-        self._bench_excess = pdata.PortfolioTRI(ret=bench_excess_ret, initial_value=bench.initial_value, initial_date=bench.initial_date)
-
         # base stats output
         self._stats = None
 
@@ -100,15 +84,15 @@ class PortfolioAnalyticsTRI(PortfolioAnalyticsBase):
 
     @property
     def risk_free(self):
-        return self._risk_free
+        return self.port.risk_free_tri
 
     @property
     def excess(self):
-        return self._excess
+        return self.port.excess_tri
 
     @property
     def bench_excess(self):
-        return self._bench_excess
+        return self.bench.excess_tri
 
     @property
     def stats(self):
@@ -126,38 +110,33 @@ class PortfolioAnalyticsTRI(PortfolioAnalyticsBase):
     def run_basic_stats(self):
         out_stats = dict()
 
-        out_stats[pc.RETURN] = self.port.cagr
+        out_stats[pc.CAGR] = self.port.cagr
         out_stats[pc.VOLATILITY] = self.port.volatility
         out_stats[pc.SHARPE] = self.port.sharpe
 
-        out_stats[pc.RETURN_ACTIVE] = self.active.cagr
+        out_stats[pc.CAGR_ACTIVE] = self.active.cagr
         out_stats[pc.TE] = self.active.volatility
         out_stats[pc.IR] = np.divide(self.active.cagr, self.active.volatility)
         self._stats = out_stats
 
     def compute_rolling_stats(self, yr):
         periods_per_year = self.port.periods_per_year
-        window1 = 1 + yr * periods_per_year
-
-        if not isinstance(yr, int):
-            window1 = int(np.ceil(window1))
-            raise Warning('Input rolling year {.2f} NOT integer, rolling window ceil to {} periods'.format(yr, window1))
-
-        window = window1 - 1  # for return data
+        window = yr * periods_per_year
+        window1 = window + 1
 
         # rolling objects
         rp_tri = self.port.tri.rolling(window1)
         rb_tri = self.bench.tri.rolling(window1)
         ra_tri = self.active.tri.rolling(window1)
-        re_tri = self.excess.tri.rolling(window1)
-        rbe_tri = self.bench_excess.tri.rolling(window1)
+        re_tri = self.port.excess_tri.rolling(window1)
+        rbe_tri = self.bench.excess_tri.rolling(window1)
 
         rp_ret = self.port.ret.rolling(window)  # one less
         rb_ret = self.bench.ret.rolling(window)
         ra_ret = self.active.ret.rolling(window)
-        re_ret = self.excess.ret.rolling(window)
-        rbe_ret = self.bench_excess.ret.rolling(window)
-        rf_rate = self.risk_free.ret.rolling(window)
+        re_ret = self.port.excess_ret.rolling(window)
+        rbe_ret = self.bench.excess_ret.rolling(window)
+        rf_rate = self.port.risk_free_rate.rolling(window)
 
         r2_ret = pd.concat([self.port.ret, self.bench.ret], axis=1).rolling(window)
 
@@ -165,10 +144,17 @@ class PortfolioAnalyticsTRI(PortfolioAnalyticsBase):
         stats = collections.OrderedDict()
 
         # returns
-        stats[pc.RETURN_PORT] = rp_tri.apply(pu.get_simple_return, raw=False)
-        stats[pc.RETURN_BENCH] = rb_tri.apply(pu.get_simple_return, raw=False)
-        stats[pc.RETURN_ACTIVE] = ra_tri.apply(pu.get_simple_return, raw=False)  # cumulative alpha
-        stats[pc.RETURN_EXCESS] = re_tri.apply(pu.get_simple_return, raw=False)
+        # stats[pc.RETURN_PORT] = rp_tri.apply(pu.get_simple_return, raw=False)
+        # stats[pc.RETURN_BENCH] = rb_tri.apply(pu.get_simple_return, raw=False)
+        # stats[pc.RETURN_ACTIVE] = ra_tri.apply(pu.get_simple_return, raw=False)  # cumulative alpha
+        # stats[pc.RETURN_EXCESS] = re_tri.apply(pu.get_simple_return, raw=False)
+
+        # returns
+        stats[pc.CAGR_PORT] = rp_tri.apply(pu.get_simple_cagr, raw=False)
+        stats[pc.CAGR_BENCH] = rb_tri.apply(pu.get_simple_cagr, raw=False)
+        stats[pc.CAGR_ACTIVE] = ra_tri.apply(pu.get_simple_cagr, raw=False)  # cumulative alpha
+        stats[pc.CAGR_EXCESS] = re_tri.apply(pu.get_simple_cagr, raw=False)
+        stats[pc.CAGR_BENCH_EXCESS] = rbe_tri.apply(pu.get_simple_cagr, raw=False)
 
         # volatility
         const4std = np.sqrt(periods_per_year)
@@ -180,16 +166,16 @@ class PortfolioAnalyticsTRI(PortfolioAnalyticsBase):
 
         # beta
         rcov3d = r2_ret.cov().unstack()
-        rcov = rcov3d[(self.port.tri.name, self.bench.tri.name)]
-        rvar = rcov3d[(self.bench.tri.name, self.bench.tri.name)]
+        rcov = rcov3d[(self.port.name, self.bench.name)]
+        rvar = rcov3d[(self.bench.name, self.bench.name)]
         stats[pc.BETA] = rcov.divide(rvar)
 
         # risk-adjusted return
-        # TODO: return here should be CAGR instead
-        stats[pc.SHARPE_PORT] = stats[pc.RETURN_EXCESS].divide(const4std * re_ret.std())  # std of excess return
-        stats[pc.SHARPE_BENCH] = stats[pc.BENCH_RETURN_EXCESS].divide(const4std * rbe_ret.std())  # std of excess return
-        stats[pc.IR] = (stats[pc.RETURN_PORT] - stats[pc.RETURN_BENCH]).divide(stats[pc.TE])
-        stats[pc.M2] = stats[pc.SHARPE] * stats[pc.VOL_BENCH] + rf_rate.mean()
+        stats[pc.SHARPE_PORT] = stats[pc.CAGR_EXCESS].divide(const4std * re_ret.std())  # std of excess return
+        stats[pc.SHARPE_BENCH] = stats[pc.CAGR_BENCH_EXCESS].divide(const4std * rbe_ret.std())  # std of excess return
+
+        stats[pc.IR] = (stats[pc.CAGR_ACTIVE]).divide(stats[pc.TE])
+        stats[pc.M2] = stats[pc.SHARPE_PORT] * stats[pc.VOL_BENCH] + rf_rate.mean()
 
         # remove NaN's
         stats = collections.OrderedDict([(k, v.dropna(axis=0, how='all')) for k, v in stats.items()])
