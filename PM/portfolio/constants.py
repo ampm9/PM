@@ -43,7 +43,7 @@ DEFAULT_TRI_INITIAL_VALUE = 1
 RETURN = 'return'
 RETURN_ACTIVE = 'return_active'
 RETURN_EXCESS = 'return_excess'
-RETURN_EXCESS = 'return_bench_excess'
+RETURN_BENCH_EXCESS = 'return_bench_excess'
 
 CAGR = 'cagr'
 CAGR_ACTIVE = 'cagr_active'
@@ -72,5 +72,3 @@ VOL_RATIO = 'vol_ratio'
 
 SHARPE_PORT = 'sharpe_port'
 SHARPE_BENCH = 'sharpe_bench'
-
-

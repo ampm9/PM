@@ -87,7 +87,7 @@ def return2tri(data, initial_value=100., initial_date=None):
     initial_date = pd.to_datetime(initial_date)
 
     if isinstance(data, pd.Series):
-        if data.isempty():  # edge case, empty in, empty out
+        if data.empty:  # edge case, empty in, empty out
             return data
 
         if initial_date is None:
@@ -137,7 +137,7 @@ def return2tri(data, initial_value=100., initial_date=None):
         raise TypeError('Input data must be either pandas.Series or pandas.DataFrame')
 
 
-def process_tri_or_return(tri=None, ret=None, initial_value=100., initial_date=None):
+def process_tri_or_return(tri=None, ret=None, initial_value=None, initial_date=None):
     """Compute total return index or return if either one of them are input;
     If neither TRI and return are not None, check if they represent the same index.
 
@@ -155,7 +155,9 @@ def process_tri_or_return(tri=None, ret=None, initial_value=100., initial_date=N
 
     if tri is not None and ret is None:
         if initial_date is not None:
-            raise Warning('Initial_date and initial_value are not required if return data is not input')
+            raise Warning('Initial_date is only required with return input')
+        if initial_value is not None:
+            tri = normalise(tri, initial_value=initial_value)
         ret = tri.pct_change()
         return tri, ret, True
 

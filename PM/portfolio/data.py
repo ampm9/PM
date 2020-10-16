@@ -88,8 +88,8 @@ class PortfolioTRI(PortfolioTRIBase):
 
         # self._ret = self._ret.dropna(axis=0, how='all') # remove first NaN
 
-        self.initial_date = tri.first_valid_index()
-        self.initial_value = tri.loc[self.initial_date]
+        self.initial_date = self.tri.first_valid_index()
+        self.initial_value = self.tri.loc[self.initial_date]
 
         # Portfolio name, pandas.Series only
         if isinstance(self.tri, pd.Series):
@@ -105,9 +105,9 @@ class PortfolioTRI(PortfolioTRIBase):
         # risk free rate and risk free index
         if risk_free_tri is None and risk_free_rate is None:
             self._risk_free_tri = pd.Series(1, index=self.tri.index, name='risk_free')
-            self._risk_free_rate = risk_free_tri.pct_change()
+            self._risk_free_rate = self._risk_free_tri.pct_change()
         else:
-            self._risk_free_tri, self._risk_free_rate = pu.process_tri_or_return(tri=risk_free_tri, ret=risk_free_rate, **kwargs)
+            self._risk_free_tri, self._risk_free_rate, _ = pu.process_tri_or_return(tri=risk_free_tri, ret=risk_free_rate, **kwargs)
 
         # excess return and TRI
         self._excess_ret = self.ret.subtract(self.risk_free_rate, axis=0)
@@ -124,6 +124,10 @@ class PortfolioTRI(PortfolioTRIBase):
 
         # run
         self._run_basic_stats()
+
+    @property
+    def name(self):
+        return self._name
 
     @property
     def tri(self):
@@ -143,11 +147,11 @@ class PortfolioTRI(PortfolioTRIBase):
 
     @property
     def excess_tri(self):
-        return self._ex_tri.copy()
+        return self._excess_tri.copy()
 
     @property
     def excess_ret(self):
-        return self._ex_ret.copy()
+        return self._excess_ret.copy()
 
     def _run_basic_stats(self):
         out_dict = {}

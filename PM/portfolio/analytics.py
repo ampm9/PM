@@ -114,9 +114,15 @@ class PortfolioAnalyticsTRI(PortfolioAnalyticsBase):
         out_stats[pc.VOLATILITY] = self.port.volatility
         out_stats[pc.SHARPE] = self.port.sharpe
 
+        out_stats[pc.CAGR_BENCH] = self.bench.cagr
+        out_stats[pc.VOL_BENCH] = self.bench.volatility
+        out_stats[pc.SHARPE_BENCH] = self.bench.sharpe
+
         out_stats[pc.CAGR_ACTIVE] = self.active.cagr
         out_stats[pc.TE] = self.active.volatility
         out_stats[pc.IR] = np.divide(self.active.cagr, self.active.volatility)
+
+        out_stats[pc.M2] = out_stats[pc.SHARPE] * out_stats[pc.VOL_BENCH] + self.port.risk_free_rate.mean()
         self._stats = out_stats
 
     def compute_rolling_stats(self, yr):
@@ -183,7 +189,13 @@ class PortfolioAnalyticsTRI(PortfolioAnalyticsBase):
         return stats
 
     def run_rolling_stats(self):
-        self._rolling_stats = {y: self.compute_rolling_stats(y) for y in self._rolling_stats}
+        self._rolling_stats = {y: self.compute_rolling_stats(y) for y in self.rolling_years}
+
+    @property
+    def rolling_stats(self):
+        if self._rolling_stats is None:
+            self.run_rolling_stats()
+        return self._rolling_stats
 
     @property
     def rolling1yr(self):
