@@ -1,12 +1,16 @@
 import datetime
 
 import pandas as pd
+import numpy as np
+
+
+# TODO: shares, remove null columns, all null value
 
 
 def compute_holding_period(shares):
     """Compute a security average holding period"""
     if isinstance(shares, pd.DataFrame):
-        return shares.apply(compute_holding_period) # by column
+        return shares.apply(compute_holding_period)  # by column
 
     if not isinstance(shares, pd.Series):
         raise TypeError('Invalid input type: {}'.format(type(shares)))
@@ -63,7 +67,11 @@ def compute_holding_period_loop(shares):
     rec.loc[extra_date, 'sum'] = s.sum()
     rec.loc[extra_date, 'max'] = s.max()
 
-    return rec['sum'].sum() / rec['max'].sum()
+    rec_max_sum = rec['max'].sum()
+    if rec_max_sum == 0:
+        return np.nan
+
+    return rec['sum'].sum() / rec_max_sum
 
 
 def compute_holding_period_hbar(shares):
@@ -100,7 +108,11 @@ def compute_holding_period_hbar(shares):
     y_vals = [b.iloc[0] for b in all_bars]
     x_vals = [len(b.index) for b in all_bars]
 
-    return sum([y*x for y, x in zip(y_vals, x_vals)]) / sum(y_vals)
+    y_sum = sum(y_vals)
+    if y_sum == 0:
+        return np.nan
+
+    return sum([y*x for y, x in zip(y_vals, x_vals)]) / y_sum
 
 
 def ind2series_list(s):
