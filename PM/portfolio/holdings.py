@@ -24,6 +24,9 @@ def compute_holding_period(shares):
     shares_on_hold = shares.loc[shares.last_valid_index()]
     total_shares2sell = - shares2sell.sum() + shares_on_hold
 
+    if total_shares2sell == 0:
+        return np.nan
+
     return shares.sum() / total_shares2sell
 
 
