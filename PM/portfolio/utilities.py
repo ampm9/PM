@@ -292,7 +292,7 @@ def get_upside_capture_ratio(data, port, bench):
     Returns:
          float
     """
-    bench_pos = data[bench] >= 0
+    bench_pos = data[bench] >= 0 
     tri = (1 + data[bench_pos]).cumprod()
     compound_ret = tri.loc[tri.last_valid_index()] - 1
     return compound_ret[port] / compound_ret[bench]

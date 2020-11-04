@@ -55,10 +55,17 @@ class PortfolioAnalyticsTRI(PortfolioAnalyticsBase):
         else:
             active_ret = port.ret - bench.ret
             active_ret.name = pc.ACTIVE
-            self._active = pdata.PortfolioTRI(ret=active_ret, initial_value=port.initial_value, initial_date=port.initial_date)
+            self._active = pdata.PortfolioTRI(ret=active_ret, initial_value=port.initial_value,
+                                              initial_date=port.initial_date)
 
         # base stats output
+        self._ret = None
+        self._tri = None
         self._stats = None
+
+        self._m2 = None
+        self._cum_m2 = None
+        self._cum_m2_drawdown = None
 
         # rolling stats
         self.rolling_years = [1, 3, 5]
@@ -102,6 +109,24 @@ class PortfolioAnalyticsTRI(PortfolioAnalyticsBase):
             self.run()
         return self._stats
 
+    @property
+    def m2(self):
+        if self._m2 is None:
+            self.run_m2()
+        return self._m2
+
+    @property
+    def cum_m2(self):
+        if self._cum_m2 is None:
+            self._cum_m2 = pu.return2tri(self.m2, initial_value=100)
+        return self._cum_m2
+
+    @property
+    def cum_m2_drawdown(self):
+        if self._cum_m2_drawdown is None:
+            self._cum_m2_drawdown = self._cum_m2.divide(self.cum_m2.cummax(axis=0)) - 1
+        return self._cum_m2_drawdown
+
     def run(self):
         self.run_basic_stats()
 
@@ -128,6 +153,19 @@ class PortfolioAnalyticsTRI(PortfolioAnalyticsBase):
 
         out_stats[pc.M2] = out_stats[pc.SHARPE] * out_stats[pc.VOL_BENCH] + self.port.risk_free_rate.mean()
         self._stats = out_stats
+
+    def run_m2(self):
+        """Run computation for portfolio, benchmark and active M-square"""
+        vol_bp = np.divide(self.rolling_stats[1][pc.VOL_BENCH], self.rolling_stats[1][pc.VOL_PORT])
+        m2_port = vol_bp * self.port.excess_ret + self.risk_free  # like returns
+        m2_port.dropna(how='all', inplace=True)
+        m2_port.name = self.port.name
+
+        m2_bench = self.bench.ret.loc[m2_port.index]
+        m2_active = m2_port - m2_bench
+        m2_active.name = self.active.name
+        self._m2 = pd.concat([m2_port, m2_bench, m2_active], axis=1)
+        return
 
     def compute_rolling_stats(self, yr):
         periods_per_year = self.port.periods_per_year
