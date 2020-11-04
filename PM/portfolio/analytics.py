@@ -64,6 +64,8 @@ class PortfolioAnalyticsTRI(PortfolioAnalyticsBase):
         self.rolling_years = [1, 3, 5]
         self._rolling_stats = {y: None for y in self.rolling_years}
 
+        self._efficiency_scores = None
+
         # period returns
         self.periodic_freqs = ['M', 'Q', 'A', 'W']
         self._periodic_returns = {x: None for x in self.periodic_freqs}
@@ -106,6 +108,8 @@ class PortfolioAnalyticsTRI(PortfolioAnalyticsBase):
         self.run_rolling_stats()
 
         self.run_period_returns()
+
+        self.run_efficiency_scores(yr=3)
 
     def run_basic_stats(self):
         out_stats = dict()
@@ -179,6 +183,7 @@ class PortfolioAnalyticsTRI(PortfolioAnalyticsBase):
         # risk-adjusted return
         stats[pc.SHARPE_PORT] = stats[pc.CAGR_EXCESS].divide(const4std * re_ret.std())  # std of excess return
         stats[pc.SHARPE_BENCH] = stats[pc.CAGR_BENCH_EXCESS].divide(const4std * rbe_ret.std())  # std of excess return
+        stats['sharpe_difference'] = stats[pc.SHARPE_PORT] - stats[pc.SHARPE_BENCH]
 
         stats[pc.IR] = (stats[pc.CAGR_ACTIVE]).divide(stats[pc.TE])
         stats[pc.M2] = stats[pc.SHARPE_PORT] * stats[pc.VOL_BENCH] + rf_rate.mean()
@@ -261,6 +266,36 @@ class PortfolioAnalyticsTRI(PortfolioAnalyticsBase):
         ret = self._periodic_returns[freq].copy()
         ret.index = ret.index.strftime(pc.FORMAT_WEEKLY)
         return ret
+
+    @property
+    def efficiency_scores(self):
+        if self._efficiency_scores is None:
+            self.run_efficiency_scores(yr=3)
+        return self._efficiency_scores
+
+    def run_efficiency_scores(self, yr=3):
+        window = yr * pc.MONTHS_PER_YEAR
+        roll_m_ret = self.monthly_returns.rolling(window)
+
+        p_name = self.port.name
+        b_name = self.bench.name
+        df = self.monthly_returns.copy()
+
+        eff_cols = ['batting_average', 'upside_capture_ratio', 'downside_capture_ratio', 'upside_downside_ratio']
+        eff_scores = pd.DataFrame(np.nan, index=df.index, columns=eff_cols)
+
+        for e in range(window - 1, len(df)):
+            sub_df = df.iloc[1 + e - window:1 + e]  # exclude end_point
+            sub_sc = pd.Series(index=eff_cols)
+            sub_sc['batting_average'] = pu.get_return_batting_average(sub_df, p_name, b_name)
+            sub_sc['upside_capture_ratio'] = pu.get_upside_capture_ratio(sub_df, p_name, b_name)
+            sub_sc['downside_capture_ratio'] = pu.get_downside_capture_ratio(sub_df, p_name, b_name)
+            sub_sc['upside_downside_ratio'] = np.divide(sub_sc['upside_capture_ratio'],
+                                                        sub_sc['downside_capture_ratio'])
+            eff_scores.iloc[e] = sub_sc
+
+        self._efficiency_scores = eff_scores.dropna(how='all')
+        return
 
 
 class PortfolioAnalytics(PortfolioAnalyticsBase):
