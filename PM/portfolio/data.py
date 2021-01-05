@@ -78,7 +78,7 @@ class PortfolioTRI(PortfolioTRIBase):
         ret (pandas.DataFrame or pandas.Series): total returns
     """
 
-    def __init__(self, tri=None, risk_free_tri=None, name=None, start=None, end=None):
+    def __init__(self, tri=None, risk_free_tri=None, name=None, start=None, end=None, initial_value=None):
         # variable initialization
         self._tri = None
         self._ret = None
@@ -110,7 +110,7 @@ class PortfolioTRI(PortfolioTRIBase):
         if tri is None:
             return
 
-        self.initialize_tri(tri=tri, name=name, start=start, end=end)
+        self.initialize_tri(tri=tri, name=name, start=start, end=end, initial_value=initial_value)
 
         self.run()
 
@@ -170,7 +170,7 @@ class PortfolioTRI(PortfolioTRIBase):
     def ret(self, ret):
         self.initialize_ret(ret)
 
-    def initialize_tri(self, tri, start=None, end=None, name=None):
+    def initialize_tri(self, tri, start=None, end=None, name=None, initial_value=None):
         """Set portfolio total return index
         1. check input tri type
         2. truncate time-series between start and end
@@ -186,20 +186,23 @@ class PortfolioTRI(PortfolioTRIBase):
             tri.name = name
         self._name = tri.name
 
-        if self._start is None:
+        if start is None:
             self._start = tri.index[0]
         else:
             self._start = pd.to_datetime(start)
             tri = tri[tri.index >= start]
 
-        if self._end is None:
+        if end is None:
             self._end = tri.index[-1]
         else:
             self._end = pd.to_datetime(end)
             tri = tri[tri.index <= end]
 
         self.initial_date = tri.first_valid_index()
-        self.initial_value = tri.loc[self.initial_date]
+        if initial_value is None:
+            self.initial_value = tri.loc[self.initial_date]
+        else:
+            tri = pu.normalise(tri, initial_value=initial_value)
 
         self._tri = tri
         self._ret = pu.tri2return(tri)
@@ -214,7 +217,7 @@ class PortfolioTRI(PortfolioTRIBase):
             self._excess_ret = self._ret
             self._excess_tri = self._tri
 
-    def initialize_ret(self, ret, initial_value=None, initial_date=None):
+    def initialize_ret(self, ret, initial_value=pc.DEFAULT_INITIAL_VALUE, initial_date=None):
         """Set portfolio total returns"""
         if self.ret is not None:
             raise ValueError('Portfolio returns are specified already.')
