@@ -28,6 +28,11 @@ MONTHS_PER_YEAR = 12
 QUARTERS_PER_YEAR = 4
 
 
+# Numeric Constants
+DEFAULT_INITIAL_VALUE = 100.
+
+
+
 # Portfolio relevant
 PORT = 'portfolio'
 BENCH = 'benchmark'
@@ -35,8 +40,6 @@ ACTIVE = 'active'
 EXCESS = 'excess'
 BENCH_EXCESS = 'bench_excess'
 RISK_FREE = 'risk_free'
-
-DEFAULT_TRI_INITIAL_VALUE = 1
 
 
 # Analytic Stats

@@ -67,7 +67,7 @@ def get_year_frac(start_date, end_date):
 
 
 # @requires([pd.DataFrame, pd.Series])
-def return2tri(data, initial_value=100., initial_date=None):
+def return2tri(data, initial_value=pc.DEFAULT_INITIAL_VALUE, initial_date=None):
     """Convert a return time-seres to its total return index.
 
     If initial date is not specified, initial date is data's first date index, first value does not matter;
@@ -102,12 +102,11 @@ def return2tri(data, initial_value=100., initial_date=None):
             prepended_row = pd.Series({initial_date: 0.}, name=data.name)
             ret = pd.concat([prepended_row, data])
         elif initial_date in pd.to_datetime(data.index):
-            ret = data[data.index >= initial_date].copy()
+            data2 = data[data.index >= initial_date].copy()
+            ret2 = return2tri(data2, initial_value=initial_value, initial_date=initial_date)
+            ret, _ = ret2.align(data, join='right')
+            return ret
             ret.iloc[0] = 0.
-            raise Warning('Input initial date {} is not data.index[0] = {}, truncate input data series'.format(
-                initial_date.strftime(pc.FORMAT_DATE),
-                data.index[0].strftime(pc.FORMAT_DATE)
-            ))
         else:
             raise ValueError('Initial_date {} should be either in data.index or before all date index'.format(
                 initial_date.strftime(pc.FORMAT_DATE)
